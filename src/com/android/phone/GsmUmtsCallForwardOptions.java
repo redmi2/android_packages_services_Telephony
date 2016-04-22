@@ -21,7 +21,7 @@ import android.util.Log;
 import android.view.MenuItem;
 
 import java.util.ArrayList;
-
+import android.telephony.SubscriptionManager;
 
 public class GsmUmtsCallForwardOptions extends TimeConsumingPreferenceActivity
         implements DialogInterface.OnClickListener, DialogInterface.OnCancelListener {
@@ -62,21 +62,39 @@ public class GsmUmtsCallForwardOptions extends TimeConsumingPreferenceActivity
 
         mSubscriptionInfoHelper = new SubscriptionInfoHelper(this, getIntent());
         mPhone = mSubscriptionInfoHelper.getPhone();
-        if (mPhone.getImsPhone() != null && mPhone.getImsPhone().getServiceState().getState()
-                == ServiceState.STATE_IN_SERVICE
-                && getActiveNetworkType() != ConnectivityManager.TYPE_MOBILE
+        final SubscriptionManager subscriptionManager = SubscriptionManager.from(this);
+        // check the active data sub.
+        int sub = mSubscriptionInfoHelper.getSubId();
+        int defaultDataSub = subscriptionManager.getDefaultDataSubId();
+        if (mPhone != null && mPhone.isUtEnabled()
                 && getResources().getBoolean(R.bool.check_mobile_data_for_cf)) {
-            if (DBG) Log.d(LOG_TAG, "please open mobile network for UT settings!");
-            Dialog dialog = new AlertDialog.Builder(this)
-                .setTitle(R.string.no_mobile_data)
-                .setMessage(R.string.cf_setting_mobile_data_alert)
-                .setIconAttribute(android.R.attr.alertDialogIcon)
-                .setPositiveButton(android.R.string.ok, this)
-                .setNegativeButton(android.R.string.cancel, this)
-                .setOnCancelListener(this)
-                .create();
-            dialog.show();
-            return;
+            int activeNetworkType = getActiveNetworkType();
+            boolean isDataRoaming = mPhone.getServiceState().getDataRoaming();
+            boolean isDataRoamingEnabled = mPhone.getDataRoamingEnabled();
+            boolean promptForDataRoaming = isDataRoaming && !isDataRoamingEnabled;
+            Log.d(LOG_TAG, "activeNetworkType = " + getActiveNetworkType() + ", sub = " + sub +
+                    ", defaultDataSub = " + defaultDataSub + ", isDataRoaming = " +
+                    isDataRoaming + ", isDataRoamingEnabled= " + isDataRoamingEnabled);
+            if ((activeNetworkType != ConnectivityManager.TYPE_MOBILE
+                    || sub != defaultDataSub)
+                    && !(activeNetworkType == ConnectivityManager.TYPE_NONE
+                    && promptForDataRoaming)) {
+                   if (DBG) Log.d(LOG_TAG, "please open mobile network for UT settings!");
+                   String title = (String)this.getResources().getText(R.string.no_mobile_data);
+                   String message = (String)this.getResources()
+                           .getText(R.string.cf_setting_mobile_data_alert);
+                   showAlertDialog(title, message);
+                   return;
+            }
+            if (promptForDataRoaming) {
+                   if (DBG) Log.d(LOG_TAG, "please open data roaming for UT settings!");
+                   String title = (String)this.getResources()
+                           .getText(R.string.no_mobile_data_roaming);
+                   String message = (String)this.getResources()
+                           .getText(R.string.cf_setting_mobile_data_roaming_alert);
+                   showAlertDialog(title, message);
+                   return;
+            }
         }
 
         addPreferencesFromResource(R.xml.callforward_options);
@@ -251,5 +269,17 @@ public class GsmUmtsCallForwardOptions extends TimeConsumingPreferenceActivity
             return true;
         }
         return super.onOptionsItemSelected(item);
+    }
+
+    private void showAlertDialog(String title, String message) {
+        Dialog dialog = new AlertDialog.Builder(this)
+                .setTitle(title)
+                .setMessage(message)
+                .setIconAttribute(android.R.attr.alertDialogIcon)
+                .setPositiveButton(android.R.string.ok, this)
+                .setNegativeButton(android.R.string.cancel, this)
+                .setOnCancelListener(this)
+                .create();
+        dialog.show();
     }
 }

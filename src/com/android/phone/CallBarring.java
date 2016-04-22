@@ -106,6 +106,7 @@ public class CallBarring extends PreferenceActivity implements DialogInterface.O
     private static final int INITIAL_BUSY_DIALOG = 500;
     private static final int INPUT_PSW_DIALOG = 600;
     private static final int IMS_UT_REQUEST = 700;
+    private static final int IMS_UT_DATA_ROAMING_REQUEST = 800;
 
     // status message sent back from handlers
     private static final int MSG_OK = 100;
@@ -154,16 +155,27 @@ public class CallBarring extends PreferenceActivity implements DialogInterface.O
         // check the active data sub.
         int sub = subscriptionInfoHelper.getSubId();
         int defaultDataSub = subscriptionManager.getDefaultDataSubId();
-        boolean isMobileDataActived = isMobileDataActived();
-        Log.d(LOG_TAG, "isMobileDataActived = " + isMobileDataActived + ", sub = " + sub +
-                ", defaultDataSub = " + defaultDataSub);
-        if (mPhone.getImsPhone() != null && mPhone.getImsPhone().getServiceState().getState()
-                == ServiceState.STATE_IN_SERVICE
-                && (!isMobileDataActived || sub != defaultDataSub)
+        if (mPhone != null && mPhone.isUtEnabled()
                 && getResources().getBoolean(R.bool.check_mobile_data_for_cf)) {
-            mIsShowUTDialog = true;
-            if (DBG) Log.d(LOG_TAG, "please open mobile network for UT settings!");
-            showDialog (IMS_UT_REQUEST);
+             int activeNetworkType = getActiveNetworkType();
+             boolean isDataRoaming = mPhone.getServiceState().getDataRoaming();
+             boolean isDataRoamingEnabled = mPhone.getDataRoamingEnabled();
+             boolean promptForDataRoaming = isDataRoaming && !isDataRoamingEnabled;
+             Log.d(LOG_TAG, "activeNetworkType = " + getActiveNetworkType() + ", sub = " + sub +
+                     ", defaultDataSub = " + defaultDataSub + ", isDataRoaming = " +
+                     isDataRoaming + ", isDataRoamingEnabled= " + isDataRoamingEnabled);
+             if ((activeNetworkType != ConnectivityManager.TYPE_MOBILE
+                     || sub != defaultDataSub)
+                     && !(activeNetworkType == ConnectivityManager.TYPE_NONE
+                     && promptForDataRoaming)) {
+                 mIsShowUTDialog = true;
+                 if (DBG) Log.d(LOG_TAG, "please open mobile network for UT settings!");
+                 showDialog(IMS_UT_REQUEST);
+             } else if (promptForDataRoaming) {
+                 if (DBG) Log.d(LOG_TAG, "please open data roaming for UT settings!");
+                 mIsShowUTDialog = true;
+                 showDialog(IMS_UT_DATA_ROAMING_REQUEST);
+            }
         }
         addPreferencesFromResource(R.xml.call_barring);
         PreferenceScreen prefSet = getPreferenceScreen();
@@ -216,8 +228,7 @@ public class CallBarring extends PreferenceActivity implements DialogInterface.O
                 queryAllCBOptions();
             } else {
                 if (DBG) log("onResume: airplane mode on");
-                showDialog (RADIO_OFF_ERROR);
-                finish();
+                showDialog(RADIO_OFF_ERROR);
             }
         } else {
             mListOutgoing.setValue(String.valueOf(mOutgoingState));
@@ -671,6 +682,13 @@ public class CallBarring extends PreferenceActivity implements DialogInterface.O
 
             b.setTitle(getText(titleId));
             b.setMessage(getText(msgId));
+            b.setNeutralButton(R.string.close_dialog,
+                    new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int id) {
+                                finish();
+                            }
+                    });
             b.setCancelable(false);
             AlertDialog dialog = b.create();
 
@@ -682,6 +700,33 @@ public class CallBarring extends PreferenceActivity implements DialogInterface.O
             Dialog dialog = new AlertDialog.Builder(this)
                     .setTitle(R.string.no_mobile_data)
                     .setMessage(R.string.cf_setting_mobile_data_alert)
+                    .setIconAttribute(android.R.attr.alertDialogIcon)
+                    .setPositiveButton(android.R.string.ok,
+                            new DialogInterface.OnClickListener() {
+                                @Override
+                                public void onClick(DialogInterface dialog, int id) {
+                                    Intent newIntent = new Intent("android.settings.SETTINGS");
+                                    newIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                    startActivity(newIntent);
+                                    mIsShowUTDialog = false;
+                                    finish();
+                                }
+                            })
+                    .setNegativeButton(android.R.string.cancel,
+                            new DialogInterface.OnClickListener() {
+                                @Override
+                                public void onClick(DialogInterface dialog, int id) {
+                                    mIsShowUTDialog = false;
+                                    dialog.dismiss();
+                                    finish();
+                                }
+                            })
+                    .create();
+            return dialog;
+        } else if (id == IMS_UT_DATA_ROAMING_REQUEST) {
+            Dialog dialog = new AlertDialog.Builder(this)
+                    .setTitle(R.string.no_mobile_data_roaming)
+                    .setMessage(R.string.cf_setting_mobile_data_roaming_alert)
                     .setIconAttribute(android.R.attr.alertDialogIcon)
                     .setPositiveButton(android.R.string.ok,
                             new DialogInterface.OnClickListener() {
@@ -743,16 +788,17 @@ public class CallBarring extends PreferenceActivity implements DialogInterface.O
         return cbName;
     }
 
-    private boolean isMobileDataActived() {
+    private int getActiveNetworkType() {
         ConnectivityManager cm = (ConnectivityManager) getSystemService(
                 Context.CONNECTIVITY_SERVICE);
         if (cm != null) {
             NetworkInfo ni = cm.getActiveNetworkInfo();
-            if ((ni != null) && ni.isConnected()) {
-                return ni.getType() == ConnectivityManager.TYPE_MOBILE;
+            if ((ni == null) || !ni.isConnected()){
+                return ConnectivityManager.TYPE_NONE;
             }
+            return ni.getType();
         }
-        return false;
+        return ConnectivityManager.TYPE_NONE;
     }
 
     private static void log(String msg) {

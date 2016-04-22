@@ -1189,7 +1189,9 @@ public class PhoneInterfaceManager extends ITelephony.Stub {
 
     public int[] supplyPinReportResultForSubscriber(int subId, String pin) {
         enforceModifyPermission();
-        final UnlockSim checkSimPin = new UnlockSim(getPhone(subId).getIccCard());
+        Phone phone = getPhone(subId);
+        if (phone == null) return returnErrorForPinPukOperation();
+        final UnlockSim checkSimPin = new UnlockSim(phone.getIccCard());
         checkSimPin.start();
         return checkSimPin.unlockSim(null, pin);
     }
@@ -1201,9 +1203,18 @@ public class PhoneInterfaceManager extends ITelephony.Stub {
 
     public int[] supplyPukReportResultForSubscriber(int subId, String puk, String pin) {
         enforceModifyPermission();
-        final UnlockSim checkSimPuk = new UnlockSim(getPhone(subId).getIccCard());
+        Phone phone = getPhone(subId);
+        if (phone == null) return returnErrorForPinPukOperation();
+        final UnlockSim checkSimPuk = new UnlockSim(phone.getIccCard());
         checkSimPuk.start();
         return checkSimPuk.unlockSim(puk, pin);
+    }
+
+    private int[] returnErrorForPinPukOperation() {
+        int[] resultArray = new int[2];
+        resultArray[0] = PhoneConstants.PIN_GENERAL_FAILURE;
+        resultArray[1] = -1;
+        return resultArray;
     }
 
     /**
@@ -2863,7 +2874,28 @@ public class PhoneInterfaceManager extends ITelephony.Stub {
      */
     @Override
     public boolean isImsRegistered() {
-        return mPhone.isImsRegistered();
+        int subId = SubscriptionManager.getDefaultDataSubId();
+        final Phone phone = getPhone(subId);
+        Log.d(LOG_TAG, "IMS : Data sub Id : " + subId);
+
+        if (phone != null) {
+            return phone.isImsRegistered();
+        }
+        return false;
+    }
+
+    /*
+     * {@hide}
+     * Returns the IMS Registration Status based on subId
+     */
+    //@Override
+    public boolean isImsRegisteredUsingSubId(int subId) {
+        final Phone phone = getPhone(subId);
+
+        if (phone != null) {
+            return phone.isImsRegistered();
+        }
+        return false;
     }
 
     @Override
@@ -2881,6 +2913,34 @@ public class PhoneInterfaceManager extends ITelephony.Stub {
 
     /*
      * {@hide}
+     * Returns the VO WifiCalling Status
+     */
+    //@Override
+    public boolean isVoWifiCallingAvailableUsingSubId(int subId) {
+        final Phone phone = getPhone(subId);
+
+        if (phone != null) {
+            return phone.isWifiCallingEnabled();
+        }
+        return false;
+    }
+
+    /*
+     * {@hide}
+     * Returns the Video telephony WifiCalling Status
+     */
+    //@Override
+    public boolean isVideoTelephonyWifiCallingAvailableUsingSubId(int subId) {
+        final Phone phone = getPhone(subId);
+
+        if (phone != null) {
+            return phone.isVideoWifiCallingEnabled();
+        }
+        return false;
+    }
+
+    /*
+     * {@hide}
      * Returns the IMS Registration Status
      */
     public boolean isVolteAvailable() {
@@ -2888,10 +2948,37 @@ public class PhoneInterfaceManager extends ITelephony.Stub {
     }
 
     /*
+     * {@hide}
+     * Returns the volte Status
+     */
+    //@Override
+    public boolean isVolteAvailableUsingSubId(int subId) {
+        final Phone phone = getPhone(subId);
+
+        if (phone != null) {
+            return phone.isVolteEnabled();
+        }
+        return false;
+    }
+
+    /*
      * {@hide} Returns the IMS Registration Status
      */
     public boolean isVideoTelephonyAvailable() {
         return mPhone.isVideoEnabled();
+    }
+
+    /*
+     * {@hide} Returns the video telephony Status
+     */
+    //@Override
+    public boolean isVideoTelephonyAvailableUsingSubId(int subId) {
+        final Phone phone = getPhone(subId);
+
+        if (phone != null) {
+            return phone.isVideoEnabled();
+        }
+        return false;
     }
 
     private boolean canReadPhoneState(String callingPackage, String message) {
